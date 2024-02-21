@@ -2,6 +2,7 @@ export enum EditEventType {
   add = "add",
   delete = "delete",
   modify = "modify",
+  initialise = "initialise",
 }
 
 export class EditEvent {
