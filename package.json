@@ -16,7 +16,12 @@
       {
         "command": "code-data-collection-v0.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "code-data-collection-v0.generateReport",
+        "title": "Generate Report"
       }
+      
     ]
   },
   "scripts": {

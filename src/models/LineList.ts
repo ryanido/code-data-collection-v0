@@ -1,12 +1,17 @@
 import LineNode from "./LineNode";
 import { EditEvent, EditEventType } from "./EditEvent";
 const lev = require("js-levenshtein");
+const THINKING_TIME_THRESHHOLD = 600 * 1000;
+const EDITING_TIME_TIMEOUT = 15 * 1000;
+const CACHE_CHARACTER_THRESHHOLD = 15;
 const AUTO_COMPLETE_CHARACTER_THRESHHOLD = 15;
 
 export default class LineList {
   private head: LineNode | null;
   private tail: LineNode | null;
   private events: EditEvent[] = [];
+  // cache for lines that have been added already
+  private cachedLines = new Map<string,LineNode>();
 
   constructor() {
     this.head = new LineNode({
@@ -20,19 +25,26 @@ export default class LineList {
 
   //Function that consumes an EditEvent and updates the list
   consumeEditEvent(event: EditEvent) {
-    console.log("NEW EVENT TO LIST:", event);
+    // console.log("NEW EVENT TO LIST:", event);
     let node: LineNode;
-    console.log("EVENT TYPE:", event.type);
+    // console.log("EVENT TYPE:", event.type);
     this.events.push(event);
     switch (event.type) {
       case EditEventType.add:
-        console.log("ADD EVENT");
-        node = new LineNode({
-          singleCharactersEntered: event.pasted ? 0 : event.content.length,
-          numberOfCharactersPasted: event.pasted ? event.content.length : 0,
-          content: event.content,
-          event: event,
-        });
+        // console.log("ADD EVENT");
+        // check if the line is cached
+        if(this.cachedLines.has(event.content)) {
+          console.log("cached line found");
+          node = this.cachedLines.get(event.content)?.copy() as LineNode;
+        }        
+        else {
+          node = new LineNode({
+            singleCharactersEntered: event.pasted ? 0 : event.content.length,
+            numberOfCharactersPasted: event.pasted ? event.content.length : 0,
+            content: event.content,
+            events: [event],
+          });
+        }
         this.insert(node, event.line);
         break;
       case EditEventType.delete:
@@ -68,7 +80,7 @@ export default class LineList {
               singleCharactersEntered: line.length,
               numberOfCharactersPasted: 0,
               content: line,
-              event: event,
+              events: [event],
             });
             this.tail = this.head;
             continue;
@@ -77,7 +89,7 @@ export default class LineList {
             singleCharactersEntered: line.length,
             numberOfCharactersPasted: 0,
             content: line,
-            event: event,
+            events: [event],
           });
           this.insert(node, index);
         }
@@ -98,7 +110,10 @@ export default class LineList {
   }
 
   insert(node: LineNode, position: number) {
-    console.log("ADD NODE TO LIST", node, "AT POSITION", position);
+    // console.log("ADD NODE TO LIST", node, "AT POSITION", position);
+    if (node.content.length > CACHE_CHARACTER_THRESHHOLD) {
+      this.cachedLines.set(node.content, node);
+    }
     if (position === 0) {
       node.next = this.head;
       this.head = node;
@@ -155,6 +170,8 @@ export default class LineList {
     return str;
   }
 
+  // Function to get the percentage of pasted characters in the user's activity
+  // Note: Only checks lines that are still present in the file
   getPastePercentage() {
     let pasted = 0;
     let single = 0;
@@ -168,41 +185,79 @@ export default class LineList {
     return percentage;
   }
 
+  // Function to get the time distribution of the user's activity
+  // Criteria: If the time between two events is greater than EDITING_TIME_TIMEOUT(milliseconds), it is considered thinking time
+  // If the time between two events is greater than THINKING_TIME_THRESHHOLD(milliseconds), it is considered idle time
+  // The rest of the time is considered editing time
   getTimeDistribution() {
     if (this.events.length < 2) {
       return {
         thinkingTime: 0,
         editingTime: 0,
       }; // Insufficient data to calculate
-    }
+    } 
   
     let thinkingTime = 0;
     let idleTime = 0;
     let lastEventTime = this.events[0].timestamp;
+    let totalTime = 0;
   
     for (let i = 1; i < this.events.length; i++) {
       const currentTime = this.events[i].timestamp;
       const timeDiff :number = currentTime.getTime() - lastEventTime.getTime(); 
-      if (timeDiff > 90 * 1000) { 
-        thinkingTime += 90;
-        idleTime += timeDiff - 90;
+      if (timeDiff > THINKING_TIME_THRESHHOLD) { 
+        thinkingTime += THINKING_TIME_THRESHHOLD;
+        idleTime += timeDiff - THINKING_TIME_THRESHHOLD;
       }
-      else if (timeDiff > 15 * 1000) { 
+      else if (timeDiff > EDITING_TIME_TIMEOUT) { 
         thinkingTime += timeDiff;
       }
   
       lastEventTime = currentTime; // Update last event time
+      totalTime += timeDiff;
     }
   
-    const totalTime = this.events[this.events.length - 1].timestamp.getTime() - this.events[0].timestamp.getTime();
     const editingTime = totalTime - thinkingTime - idleTime;
     const timeDistribution = {
-      thinkingTime: (thinkingTime / totalTime - idleTime) * 100,
-      editingTime: (editingTime / totalTime - idleTime) * 100,
+      thinkingTime: (thinkingTime / (totalTime - idleTime)) * 100,
+      editingTime: (editingTime / (totalTime - idleTime)) * 100,
     };
     return timeDistribution;  // Return the percentage of thinking time
   }
+  
+  // Function to get the coefficient of variation of the time between events
+  // Formula: sqrt(variance) / mean
+  getCoefficientOfVariation() {
+    if(this.events.length < 2) {
+      return 0;
+    }
+    let timeDifferences = [];
+    let lastEventTime = this.events[0].timestamp;
+    for (let i = 1; i < this.events.length; i++) {
+      const currentTime = this.events[i].timestamp;
+      timeDifferences.push(currentTime.getTime() - lastEventTime.getTime());
+      lastEventTime = currentTime;
+    }
+    let mean = timeDifferences.reduce((a, b) => a + b) / timeDifferences.length;
+    let standardDeviation = Math.sqrt( timeDifferences.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / (timeDifferences.length-1) );
+    return Math.sqrt(standardDeviation) / mean;
+  }
 
-
+  // Function that writes the LineList Object to a json file
+  toJSON() {
+    let content = "";
+    for (let current = this.head; current !== null; current = current.next) {
+      content += current.content + "\n";
+    }
+    let object = {
+      content: content,
+      events: this.events,
+      pastePercentage: this.getPastePercentage(),
+      timeDistribution: this.getTimeDistribution(),
+      coefficientOfVariation: this.getCoefficientOfVariation(),
+    };
+    let json = JSON.stringify(object, null, 2);
+    return json;
+  }
 
 }
