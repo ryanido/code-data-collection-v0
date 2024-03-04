@@ -5,6 +5,7 @@ const THINKING_TIME_THRESHHOLD = 600 * 1000;
 const EDITING_TIME_TIMEOUT = 15 * 1000;
 const CACHE_CHARACTER_THRESHHOLD = 15;
 const AUTO_COMPLETE_CHARACTER_THRESHHOLD = 15;
+const TIME_BUCKET_SIZE = 5;
 
 export default class LineList {
   private head: LineNode | null;
@@ -243,6 +244,42 @@ export default class LineList {
     return Math.sqrt(standardDeviation) / mean;
   }
 
+// Function to get the number of events per bucket
+  getEventsPerBucket() {
+    const firstEventTime = this.events[0].timestamp;
+    const lastEventTime = this.events[this.events.length - 1].timestamp;
+    const timeDiff = (lastEventTime.getTime() - firstEventTime.getTime()) / 1000;
+    const numBuckets = Math.floor(timeDiff / TIME_BUCKET_SIZE) + 1;
+    const eventsPerBucket = new Array(numBuckets).fill(0);
+    for (const event of this.events) {
+      const bucketIndex = Math.floor((event.timestamp.getTime() - firstEventTime.getTime()) / TIME_BUCKET_SIZE / 1000);
+      eventsPerBucket[bucketIndex] += 1;
+    }
+    return eventsPerBucket;
+  }
+
+  getFanoFactor() {
+    const data = this.getEventsPerBucket();
+    console.log("DATA:", data);
+    if (data.length === 0) {
+      return null;
+    }
+
+    const mean = data.reduce((a, b) => a + b) / data.length;
+    const variance = data.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / (data.length - 1);
+
+    // console.log("MEAN:", mean);
+    // console.log("VARIANCE:", variance);
+
+    // Avoid division by zero
+    if (mean === 0) {
+      return null;
+    }
+
+    const fanoFactor = variance / mean;
+    // console.log("FANO FACTOR:", fanoFactor);
+    return fanoFactor;
+  }
   // Function that writes the LineList Object to a json file
   toJSON() {
     let content = "";

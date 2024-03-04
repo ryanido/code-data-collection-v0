@@ -57,13 +57,43 @@ export function activate(context: vscode.ExtensionContext) {
   timeDistributionStatusBarItem.show();
   timeDistributionStatusBarItem.text = "Edit time: N/A Idle time: N/A ";
 
-  let coefficientOfVariationStatusBarItem = vscode.window.createStatusBarItem(
+  // let coefficientOfVariationStatusBarItem = vscode.window.createStatusBarItem(
+  //   vscode.StatusBarAlignment.Left,
+  //   100
+  // );
+  // coefficientOfVariationStatusBarItem.show();
+  // coefficientOfVariationStatusBarItem.text = "Coefficient of variation: N/A";
+
+  let fanoFactorStatusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
   );
-  coefficientOfVariationStatusBarItem.show();
-  coefficientOfVariationStatusBarItem.text = "Coefficient of variation: N/A";
+  fanoFactorStatusBarItem.show();
+  fanoFactorStatusBarItem.text = "Fano Factor: N/A";
 
+  let updateStatusBarItems = () => { 
+    let pastePercentage = lineList.getPastePercentage();
+    pastePercentageStatusBarItem.text = "Pastes : " + pastePercentage.toFixed() + "%";
+    if (pastePercentage > PASTED_THRESHOLD) {
+      pastePercentageStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+    } else {
+      pastePercentageStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.defaultBackground');
+    }
+
+    let timeDistribution = lineList.getTimeDistribution();
+    timeDistributionStatusBarItem.text = "Edit time: " + timeDistribution.editingTime.toFixed() + "% Thinking time: " + timeDistribution.thinkingTime.toFixed() + "%";
+    if (timeDistribution.thinkingTime < THINKING_TIME_THRESHHOLD) {
+      timeDistributionStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+    }
+    else {
+      timeDistributionStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.defaultBackground');
+    }
+    
+    let fanoFactor = lineList.getFanoFactor();
+    if (fanoFactor !== null) {
+      fanoFactorStatusBarItem.text = "Fano Factor: " + fanoFactor.toFixed(3);
+    }
+  };
 
   vscode.workspace.onDidChangeTextDocument(
     (e: vscode.TextDocumentChangeEvent) => {
@@ -81,7 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
           lineList.consumeEditEvent(event);
         });
         // console.log(lineList.toString());
-        updateStatusBarItems(pastePercentageStatusBarItem, timeDistributionStatusBarItem, coefficientOfVariationStatusBarItem, lineList);
+        updateStatusBarItems();
       }
     }
   );
@@ -94,35 +124,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(disposable);
   context.subscriptions.push(disposable2);
-}
-
-function updateStatusBarItems(pastePercentageStatusBarItem: vscode.StatusBarItem, timeDistributionStatusBarItem: vscode.StatusBarItem, coefficientOfVariationStatusBarItem: vscode.StatusBarItem, lineList: LineList) {
-
-  let pastePercentage = lineList.getPastePercentage();
-  pastePercentageStatusBarItem.text = "Pastes : " + pastePercentage.toFixed() + "%";
-  if (pastePercentage > PASTED_THRESHOLD) {
-    pastePercentageStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-  } else {
-    pastePercentageStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.defaultBackground');
-  }
-
-  let timeDistribution = lineList.getTimeDistribution();
-  timeDistributionStatusBarItem.text = "Edit time: " + timeDistribution.editingTime.toFixed() + "% Thinking time: " + timeDistribution.thinkingTime.toFixed() + "%";
-  if (timeDistribution.thinkingTime < THINKING_TIME_THRESHHOLD) {
-    timeDistributionStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-  }
-  else {
-    timeDistributionStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.defaultBackground');
-  }
-  
-  let coefficientOfVariation = lineList.getCoefficientOfVariation();
-  coefficientOfVariationStatusBarItem.text = "Coefficient of variation: " + coefficientOfVariation.toFixed(3);
-  if (coefficientOfVariation > COEFFICIENT_OF_VARIATION_THRESHOLD) {
-    coefficientOfVariationStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-  }
-  else {
-    coefficientOfVariationStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.defaultBackground');
-  }
 }
 
 function generateReport() {
