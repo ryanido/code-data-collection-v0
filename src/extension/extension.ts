@@ -6,9 +6,8 @@ import { EditEvent, EditEventType } from "../models/EditEvent";
 import { vsCodeEventToEditEvent } from "../models/EventFactory";
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-const PASTED_THRESHOLD = 50;
+const PASTED_THRESHOLD = 10;
 const THINKING_TIME_THRESHHOLD = 50;
-const COEFFICIENT_OF_VARIATION_THRESHOLD = 1;
 let lineList = new LineList();
 
 export function activate(context: vscode.ExtensionContext) {
@@ -48,14 +47,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 // Every time the user types something, the status bar will be updated
   pastePercentageStatusBarItem.show();
-  pastePercentageStatusBarItem.text = "Pastes" + 0 + "%";
+  pastePercentageStatusBarItem.text = "Assisted Text: " + 0 + "%";
 
   let timeDistributionStatusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
   );
   timeDistributionStatusBarItem.show();
-  timeDistributionStatusBarItem.text = "Edit time: N/A Idle time: N/A ";
+  timeDistributionStatusBarItem.text = "Edit time: N/A Thinking time: N/A ";
 
   // let coefficientOfVariationStatusBarItem = vscode.window.createStatusBarItem(
   //   vscode.StatusBarAlignment.Left,
@@ -72,8 +71,8 @@ export function activate(context: vscode.ExtensionContext) {
   fanoFactorStatusBarItem.text = "Fano Factor: N/A";
 
   let updateStatusBarItems = () => { 
-    let pastePercentage = lineList.getPastePercentage();
-    pastePercentageStatusBarItem.text = "Pastes : " + pastePercentage.toFixed() + "%";
+    let pastePercentage = lineList.getAssistedTextPercentage();
+    pastePercentageStatusBarItem.text = "Assisted Text : " + pastePercentage.toFixed() + "%";
     if (pastePercentage > PASTED_THRESHOLD) {
       pastePercentageStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     } else {

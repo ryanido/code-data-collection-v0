@@ -10,13 +10,13 @@ export class EditEvent {
   type: EditEventType;
   timestamp: Date;
   content: string;
-  pasted: boolean;
+  assisted: boolean;
 
-  constructor(line: number, type: EditEventType, timestamp: Date, content: string, pasted: boolean) {
+  constructor(line: number, type: EditEventType, timestamp: Date, content: string, assisted: boolean) {
     this.line = line;
     this.type = type;
     this.timestamp = timestamp;
     this.content = content;
-    this.pasted = pasted;
+    this.assisted = assisted;
   }
 }

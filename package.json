@@ -15,7 +15,7 @@
     "commands": [
       {
         "command": "code-data-collection-v0.helloWorld",
-        "title": "Hello World"
+        "title": "Start Data Collection"
       },
       {
         "command": "code-data-collection-v0.generateReport",

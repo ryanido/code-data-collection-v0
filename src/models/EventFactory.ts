@@ -1,7 +1,9 @@
 import { EditEvent, EditEventType } from "./EditEvent";
 import * as vscode from "vscode";
+const AUTO_COMPLETE_CHARACTER_THRESHHOLD = 5;
 
 export function vsCodeEventToEditEvent(event: vscode.TextDocumentChangeEvent, editor: vscode.TextEditor) {
+    console.log("EVENT: ", event);
     let events: EditEvent[] = [];
     for (let index = 0; index < event.contentChanges.length; index++) {
       let startLine: number = event.contentChanges[index].range.start.line;
@@ -22,7 +24,7 @@ export function vsCodeEventToEditEvent(event: vscode.TextDocumentChangeEvent, ed
                 EditEventType.modify,
                 new Date(),
                 content,
-                lines[i].length > 1
+                lines.length > 1 || lines[i].length > AUTO_COMPLETE_CHARACTER_THRESHHOLD
               )
             );
           } else {
@@ -33,7 +35,7 @@ export function vsCodeEventToEditEvent(event: vscode.TextDocumentChangeEvent, ed
                 EditEventType.add,
                 new Date(),
                 content,
-                lines[i].length > 1
+                true
               )
             );
           }
@@ -52,7 +54,7 @@ export function vsCodeEventToEditEvent(event: vscode.TextDocumentChangeEvent, ed
                 EditEventType.modify,
                 new Date(),
                 content,
-                lines[i].length > 1
+                lines[i].length > AUTO_COMPLETE_CHARACTER_THRESHHOLD
               )
             );
           } else {

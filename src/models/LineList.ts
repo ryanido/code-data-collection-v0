@@ -1,33 +1,34 @@
 import LineNode from "./LineNode";
 import { EditEvent, EditEventType } from "./EditEvent";
 const lev = require("js-levenshtein");
+const EDITING_TIME_THRESHOLD = 15 * 1000;
 const THINKING_TIME_THRESHHOLD = 600 * 1000;
-const EDITING_TIME_TIMEOUT = 15 * 1000;
 const CACHE_CHARACTER_THRESHHOLD = 15;
-const AUTO_COMPLETE_CHARACTER_THRESHHOLD = 15;
 const TIME_BUCKET_SIZE = 5;
 
 export default class LineList {
   private head: LineNode | null;
   private tail: LineNode | null;
   private events: EditEvent[] = [];
+  private characterChanges: { [key: string ]: number } = {};
   // cache for lines that have been added already
-  private cachedLines = new Map<string,LineNode>();
+  private cachedLines :Map<string,LineNode>;
 
   constructor() {
     this.head = new LineNode({
       singleCharactersEntered: 0,
-      numberOfCharactersPasted: 0,
+      numberOfAssistedCharacters: 0,
       content: "",
      });
     this.tail = this.head;
     this.events = [];
+    this.cachedLines = new Map<string,LineNode>();
   }
 
   //Function that consumes an EditEvent and updates the list
   consumeEditEvent(event: EditEvent) {
     // console.log("NEW EVENT TO LIST:", event);
-    let node: LineNode;
+    let node: LineNode | undefined;
     // console.log("EVENT TYPE:", event.type);
     this.events.push(event);
     switch (event.type) {
@@ -35,13 +36,13 @@ export default class LineList {
         // console.log("ADD EVENT");
         // check if the line is cached
         if(this.cachedLines.has(event.content)) {
-          console.log("cached line found");
+          // console.log("cached line found");
           node = this.cachedLines.get(event.content)?.copy() as LineNode;
         }        
         else {
           node = new LineNode({
-            singleCharactersEntered: event.pasted ? 0 : event.content.length,
-            numberOfCharactersPasted: event.pasted ? event.content.length : 0,
+            singleCharactersEntered: event.assisted ? 0 : event.content.length,
+            numberOfAssistedCharacters: event.assisted ? event.content.length : 0,
             content: event.content,
             events: [event],
           });
@@ -49,25 +50,37 @@ export default class LineList {
         this.insert(node, event.line);
         break;
       case EditEventType.delete:
+        const lineNode = this.get(event.line);
+        if (lineNode) {
+          this.characterChanges[event.timestamp.toString()] += lineNode.content.length;
+        }
         this.delete(event.line);
         break;
       case EditEventType.modify:
         if (this.get(event.line) !== null) {
           node = this.get(event.line)!;
-          let charactersAltered =
+          if(node.content === "" && this.cachedLines.has(event.content))
+          {
+            node = this.cachedLines.get(event.content)?.copy() as LineNode;
+            this.delete(event.line);
+            this.insert(node, event.line);
+          } else{
+            let charactersAltered =
             lev(node.content, event.content) -
             Math.max(0, node.content.length - event.content.length);
-          if (event.pasted) {
-            node.numberOfCharactersPasted += charactersAltered;
+          this.characterChanges[event.timestamp.toString()] += charactersAltered;
+          if (event.assisted) {
+            node.numberOfAssistedCharacters += charactersAltered;
           } else {
             node.singleCharactersEntered += charactersAltered;
           }
           if(event.content.length === 0) {
             node.singleCharactersEntered = 0;
-            node.numberOfCharactersPasted = 0;
+            node.numberOfAssistedCharacters = 0;
           }
           node.content = event.content;
           node.events.push(event);
+          }
         } else {
           throw new Error("Line not found");
         }
@@ -76,28 +89,26 @@ export default class LineList {
         let lines = event.content.split(/\r\n|\r|\n/);
         for (let index = 0; index < lines.length; index++) {
           let line = lines[index].replace(/\s/g, '');
-          if(index === 0) {
-            this.head = new LineNode({
-              singleCharactersEntered: line.length,
-              numberOfCharactersPasted: 0,
-              content: line,
-              events: [event],
-            });
-            this.tail = this.head;
-            continue;
-          }
           node = new LineNode({
             singleCharactersEntered: line.length,
-            numberOfCharactersPasted: 0,
+            numberOfAssistedCharacters: 0,
             content: line,
             events: [event],
           });
+          if (node.content.length > CACHE_CHARACTER_THRESHHOLD) {
+            this.cachedLines.set(node.content, node.copy());
+          }
           this.insert(node, index);
         }
         break;
       default:
         throw new Error("Invalid event type");
     }
+    if(node !== undefined) {
+      if (node.content.length > CACHE_CHARACTER_THRESHHOLD) {
+        this.cachedLines.set(node.content, node.copy());
+      }
+   }
   }
 
   get(position: number) {
@@ -112,9 +123,6 @@ export default class LineList {
 
   insert(node: LineNode, position: number) {
     // console.log("ADD NODE TO LIST", node, "AT POSITION", position);
-    if (node.content.length > CACHE_CHARACTER_THRESHHOLD) {
-      this.cachedLines.set(node.content, node);
-    }
     if (position === 0) {
       node.next = this.head;
       this.head = node;
@@ -162,7 +170,7 @@ export default class LineList {
         " | " +
         current.content +
         " | " +
-        current.numberOfCharactersPasted +
+        current.numberOfAssistedCharacters +
         ":" +
         current.singleCharactersEntered +
         "\n";
@@ -171,23 +179,23 @@ export default class LineList {
     return str;
   }
 
-  // Function to get the percentage of pasted characters in the user's activity
+  // Function to get the percentage of assisted characters in the user's activity
   // Note: Only checks lines that are still present in the file
-  getPastePercentage() {
-    let pasted = 0;
+  getAssistedTextPercentage() {
+    let assisted = 0;
     let single = 0;
     let current = this.head;
     while (current !== null) {
-      pasted += current.numberOfCharactersPasted;
+      assisted += current.numberOfAssistedCharacters;
       single += current.singleCharactersEntered;
       current = current.next;
     }
-    const percentage = (pasted / (pasted + single)) * 100 || 0;
+    const percentage = (assisted / (assisted + single)) * 100 || 0;
     return percentage;
   }
 
   // Function to get the time distribution of the user's activity
-  // Criteria: If the time between two events is greater than EDITING_TIME_TIMEOUT(milliseconds), it is considered thinking time
+  // Criteria: If the time between two events is greater than EDITING_TIME_THRESHOLD(milliseconds), it is considered thinking time
   // If the time between two events is greater than THINKING_TIME_THRESHHOLD(milliseconds), it is considered idle time
   // The rest of the time is considered editing time
   getTimeDistribution() {
@@ -210,7 +218,7 @@ export default class LineList {
         thinkingTime += THINKING_TIME_THRESHHOLD;
         idleTime += timeDiff - THINKING_TIME_THRESHHOLD;
       }
-      else if (timeDiff > EDITING_TIME_TIMEOUT) { 
+      else if (timeDiff > EDITING_TIME_THRESHOLD) { 
         thinkingTime += timeDiff;
       }
   
@@ -244,7 +252,7 @@ export default class LineList {
     return Math.sqrt(standardDeviation) / mean;
   }
 
-// Function to get the number of events per bucket
+// Function to get the number of events per time bucket
   getEventsPerBucket() {
     const firstEventTime = this.events[0].timestamp;
     const lastEventTime = this.events[this.events.length - 1].timestamp;
@@ -255,12 +263,28 @@ export default class LineList {
       const bucketIndex = Math.floor((event.timestamp.getTime() - firstEventTime.getTime()) / TIME_BUCKET_SIZE / 1000);
       eventsPerBucket[bucketIndex] += 1;
     }
-    return eventsPerBucket;
+    return eventsPerBucket.filter((value) => value > 0);
   }
+
+  getCharacterChangesPerBucket() {
+    const firstEventTime = this.events[0].timestamp;
+    const lastEventTime = this.events[this.events.length - 1].timestamp;
+    const timeDiff = (lastEventTime.getTime() - firstEventTime.getTime()) / 1000;
+    const numBuckets = Math.floor(timeDiff / TIME_BUCKET_SIZE) + 1;
+    const characterChangesPerBucket = new Array(numBuckets).fill(0);
+    for (const event of this.events) {
+      const bucketIndex = Math.floor((event.timestamp.getTime() - firstEventTime.getTime()) / TIME_BUCKET_SIZE / 1000);
+      characterChangesPerBucket[bucketIndex] += this.characterChanges[event.timestamp.toString()];
+    }
+    const mean = characterChangesPerBucket.reduce((a, b) => a + b) / characterChangesPerBucket.length;
+    return mean;
+  }
+
 
   getFanoFactor() {
     const data = this.getEventsPerBucket();
-    console.log("DATA:", data);
+
+    // console.log("DATA:", data);
     if (data.length === 0) {
       return null;
     }
@@ -289,9 +313,9 @@ export default class LineList {
     let object = {
       content: content,
       events: this.events,
-      pastePercentage: this.getPastePercentage(),
+      pastePercentage: this.getAssistedTextPercentage(),
       timeDistribution: this.getTimeDistribution(),
-      coefficientOfVariation: this.getCoefficientOfVariation(),
+      fanoFactor: this.getFanoFactor(),
     };
     let json = JSON.stringify(object, null, 2);
     return json;
